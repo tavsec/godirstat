@@ -5,8 +5,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"tavsec/godirstat/services/walker"
 )
 
@@ -16,7 +18,7 @@ var baseStyle = lipgloss.NewStyle().
 
 type model struct {
 	textInput textinput.Model
-	files     []string
+	files     []fs.FileInfo
 	table     table.Model
 	isDisplay bool
 }
@@ -31,7 +33,9 @@ func initialModel() model {
 	ti.Width = 512
 
 	columns := []table.Column{
+		{Title: "Is Directory", Width: 10},
 		{Title: "File", Width: 100},
+		{Title: "Size", Width: 20},
 	}
 	t := table.New(
 		table.WithColumns(columns),
@@ -54,7 +58,7 @@ func initialModel() model {
 
 	return model{
 		textInput: ti,
-		files:     make([]string, 0),
+		files:     make([]fs.FileInfo, 0),
 		table:     t,
 		isDisplay: false,
 	}
@@ -105,10 +109,14 @@ func (m model) View() string {
 	return s
 }
 
-func filesToTableRows(files []string) []table.Row {
+func filesToTableRows(files []fs.FileInfo) []table.Row {
 	rows := make([]table.Row, 0)
 	for _, file := range files {
-		rows = append(rows, table.Row{file})
+		isDirIcon := "✔️"
+		if !file.IsDir() {
+			isDirIcon = ""
+		}
+		rows = append(rows, table.Row{isDirIcon, file.Name(), strconv.FormatInt(file.Size(), 10)})
 	}
 
 	return rows

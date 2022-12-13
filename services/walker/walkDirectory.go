@@ -5,11 +5,12 @@ import (
 	"path/filepath"
 )
 
-func Walk(path string) (error, []string) {
-	files := make([]string, 0)
+func Walk(path string) (error, []fs.FileInfo) {
+	files := make([]fs.FileInfo, 0)
 	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
-		files = append(files, path+d.Name())
-		return nil
+		fileInfo, err := d.Info()
+		files = append(files, fileInfo)
+		return err
 	})
 	if err != nil {
 		return err, nil
