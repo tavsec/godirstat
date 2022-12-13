@@ -1,15 +1,24 @@
 package main
 
 import (
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"os"
 	"path/filepath"
 	"tavsec/godirstat/services/walker"
 )
 
+var baseStyle = lipgloss.NewStyle().
+	BorderStyle(lipgloss.NormalBorder()).
+	BorderForeground(lipgloss.Color("240"))
+
 type model struct {
 	textInput textinput.Model
+	files     []string
+	table     table.Model
+	isDisplay bool
 }
 
 func initialModel() model {
@@ -21,8 +30,33 @@ func initialModel() model {
 	ti.CharLimit = 512
 	ti.Width = 512
 
+	columns := []table.Column{
+		{Title: "File", Width: 100},
+	}
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows([]table.Row{}),
+		table.WithFocused(true),
+		table.WithHeight(7),
+	)
+
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	t.SetStyles(s)
+
 	return model{
 		textInput: ti,
+		files:     make([]string, 0),
+		table:     t,
+		isDisplay: false,
 	}
 }
 
@@ -34,12 +68,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 
-	// Is it a key press?
 	case tea.KeyMsg:
 
 		switch msg.Type {
 		case tea.KeyEnter:
-			walker.Walk(m.textInput.Value())
+			_, m.files = walker.Walk(m.textInput.Value())
+			m.table.SetRows(filesToTableRows(m.files))
+			m.isDisplay = true
 		}
 
 		switch msg.String() {
@@ -48,16 +83,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		}
+
 	}
+	m.table, cmd = m.table.Update(msg)
 	m.textInput, cmd = m.textInput.Update(msg)
 	return m, cmd
 }
 
 func (m model) View() string {
-	s := "Welsome to GoDirStat\n\n"
-	s += "Where would you like to perform directory list?"
-	s += m.textInput.View()
-	s += "\nPress q to quit.\n"
+	var s string
+	if !m.isDisplay {
+		s = "Welcome to GoDirStat\n\n"
+		s += "Where would you like to perform directory list?"
+		s += m.textInput.View()
+		s += "\nPress q to quit.\n"
+	} else {
+		s = baseStyle.Render(m.table.View())
+
+	}
 
 	return s
+}
+
+func filesToTableRows(files []string) []table.Row {
+	rows := make([]table.Row, 0)
+	for _, file := range files {
+		rows = append(rows, table.Row{file})
+	}
+
+	return rows
 }
