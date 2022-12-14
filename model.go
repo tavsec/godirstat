@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,11 +17,16 @@ var baseStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color("240"))
 
+var (
+	isLoading = false
+	isDisplay = false
+	files     = make([]fs.FileInfo, 0)
+)
+
 type model struct {
 	textInput textinput.Model
-	files     []fs.FileInfo
 	table     table.Model
-	isDisplay bool
+	spinner   spinner.Model
 }
 
 func initialModel() model {
@@ -56,11 +62,14 @@ func initialModel() model {
 		Bold(false)
 	t.SetStyles(s)
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return model{
 		textInput: ti,
-		files:     make([]fs.FileInfo, 0),
 		table:     t,
-		isDisplay: false,
+		spinner:   sp,
 	}
 }
 
@@ -76,9 +85,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.Type {
 		case tea.KeyEnter:
-			_, m.files = walker.Walk(m.textInput.Value())
-			m.table.SetRows(filesToTableRows(m.files))
-			m.isDisplay = true
+			walker.WG.Add(1)
+			walker.WalkDir(m.textInput.Value())
+			isLoading = true
+			cmd = m.spinner.Tick
+
+			go func() {
+				walker.WG.Wait()
+				files = walker.Files
+				isLoading = false
+				isDisplay = true
+			}()
+
+			return m, cmd
 		}
 
 		switch msg.String() {
@@ -91,17 +110,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.table, cmd = m.table.Update(msg)
 	m.textInput, cmd = m.textInput.Update(msg)
+
+	if isLoading {
+		m.spinner, cmd = m.spinner.Update(msg)
+	}
 	return m, cmd
 }
 
 func (m model) View() string {
 	var s string
-	if !m.isDisplay {
+	if isLoading {
+		s = "Loading " + m.spinner.View() + "\n"
+	} else if !isDisplay {
 		s = "Welcome to GoDirStat\n\n"
 		s += "Where would you like to perform directory list?"
 		s += m.textInput.View()
 		s += "\nPress q to quit.\n"
 	} else {
+		// TODO: remove to Goroutine, don't run this every loop
+		m.table.SetRows(filesToTableRows(files))
 		s = baseStyle.Render(m.table.View())
 
 	}
