@@ -21,7 +21,10 @@ var (
 	isLoading = false
 	isDisplay = false
 	files     = make([]fs.FileInfo, 0)
+	sub       = make(chan struct{})
 )
+
+type loadingMsg struct{}
 
 type model struct {
 	textInput textinput.Model
@@ -73,6 +76,12 @@ func initialModel() model {
 	}
 }
 
+func waitForEndLoading() tea.Cmd {
+	return func() tea.Msg {
+		return loadingMsg(<-sub)
+	}
+}
+
 func (m model) Init() tea.Cmd {
 	return textinput.Blink
 }
@@ -95,9 +104,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				files = walker.Files
 				isLoading = false
 				isDisplay = true
+				sub <- struct{}{}
 			}()
 
-			return m, cmd
+			return m, tea.Batch(cmd, waitForEndLoading())
+
 		}
 
 		switch msg.String() {
@@ -106,6 +117,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		}
+
+	case loadingMsg:
+		m.table.SetRows(filesToTableRows(files))
+		return m, nil
 
 	}
 	m.table, cmd = m.table.Update(msg)
@@ -127,8 +142,6 @@ func (m model) View() string {
 		s += m.textInput.View()
 		s += "\nPress q to quit.\n"
 	} else {
-		// TODO: remove to Goroutine, don't run this every loop
-		m.table.SetRows(filesToTableRows(files))
 		s = baseStyle.Render(m.table.View())
 
 	}
